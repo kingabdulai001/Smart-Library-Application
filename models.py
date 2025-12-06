@@ -112,3 +112,60 @@ class Book:
         book_id = loan[0]
         db.execute("UPDATE book SET copies_available = copies_available + 1 WHERE book_id=%s", (book_id,))
         return True, "Book returned successfully!"
+
+
+
+
+class BookClub:
+    @staticmethod
+    def create(name, description, creator_user_id):
+        try:
+            db.execute(
+                "INSERT INTO bookclub (name, description) VALUES (%s, %s) RETURNING club_id",
+                (name, description)
+            )
+            club_id = db.cur.fetchone()[0]
+            return True, club_id
+        except Exception as e:
+            return False, str(e)
+
+    @staticmethod
+    def get_all():
+        return db.fetch("""
+            SELECT club_id, name, description, 
+                   (SELECT COUNT(*) FROM club_member cm WHERE cm.club_id = bookclub.club_id) as members
+            FROM bookclub ORDER BY name
+        """)
+
+    @staticmethod
+    def join(club_id, member_user_id):
+        member_row = db.fetchone("SELECT member_id FROM member WHERE user_id = %s", (member_user_id,))
+        if not member_row:
+            return False, "Member not found"
+        member_id = member_row[0]
+
+        try:
+            db.execute("INSERT INTO club_member (club_id, member_id) VALUES (%s, %s)", (club_id, member_id))
+            return True, "Joined successfully!"
+        except psycopg2.IntegrityError:
+            db.conn.rollback()
+            return False, "Already a member!"
+
+    @staticmethod
+    def leave(club_id, member_user_id):
+        member_row = db.fetchone("SELECT member_id FROM member WHERE user_id = %s", (member_user_id,))
+        if not member_row:
+            return False, "Member not found"
+        member_id = member_row[0]
+
+        db.execute("DELETE FROM club_member WHERE club_id = %s AND member_id = %s", (club_id, member_id))
+        return True, "Left the club"
+
+    @staticmethod
+    def get_members(club_id):
+        return db.fetch("""
+            SELECT m.name, m.email 
+            FROM club_member cm
+            JOIN member m ON cm.member_id = m.member_id
+            WHERE cm.club_id = %s
+        """, (club_id,))
