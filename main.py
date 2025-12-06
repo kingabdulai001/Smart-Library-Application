@@ -189,14 +189,159 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(tabs)
 
-    # ———————————————————— YOUR EXISTING TABS (keep them) ————————————————————
+    # ———————————————————— BOOK CATALOG TAB ————————————————————
     def book_catalog_tab(self):
-        # ← Your working book catalog code here
-        pass  # Replace with your actual code
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Search section
+        search_box = QGroupBox("Search Books")
+        search_layout = QHBoxLayout()
+        
+        self.search_title = QLineEdit()
+        self.search_title.setPlaceholderText("Search by title...")
+        self.search_author = QLineEdit()
+        self.search_author.setPlaceholderText("Search by author...")
+        
+        search_btn = QPushButton("Search")
+        search_btn.setStyleSheet("background:#3498db;color:white;padding:10px;border-radius:8px;font-weight:bold;")
+        search_btn.clicked.connect(self.search_books)
+        
+        search_layout.addWidget(QLabel("Title:"))
+        search_layout.addWidget(self.search_title)
+        search_layout.addWidget(QLabel("Author:"))
+        search_layout.addWidget(self.search_author)
+        search_layout.addWidget(search_btn)
+        search_box.setLayout(search_layout)
+        layout.addWidget(search_box)
+
+        # Books table
+        self.books_table = QTableWidget()
+        self.books_table.setColumnCount(5)
+        self.books_table.setHorizontalHeaderLabels(["Title", "Author", "ISBN", "Available Copies", "Action"])
+        self.books_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(QLabel("<h2>Available Books</h2>"))
+        layout.addWidget(self.books_table)
+
+        widget.setLayout(layout)
+        self.search_books()  # Load all books initially
+        return widget
+
+    def search_books(self):
+        title = self.search_title.text()
+        author = self.search_author.text()
+        books = Book.search(title, author)
+        
+        self.books_table.setRowCount(len(books))
+        for i, (book_id, title, author, isbn, copies) in enumerate(books):
+            self.books_table.setItem(i, 0, QTableWidgetItem(title))
+            self.books_table.setItem(i, 1, QTableWidgetItem(author))
+            self.books_table.setItem(i, 2, QTableWidgetItem(isbn or "—"))
+            self.books_table.setItem(i, 3, QTableWidgetItem(str(copies)))
+
+            # Action button (Borrow if member, view if librarian)
+            widget = QWidget()
+            hbox = QHBoxLayout(widget)
+            hbox.setContentsMargins(5, 5, 5, 5)
+
+            if self.user["role_id"] == 2:  # Member
+                btn = QPushButton("Borrow" if copies > 0 else "Unavailable")
+                btn.setEnabled(copies > 0)
+                btn.setStyleSheet("background:#27ae60;color:white;padding:8px;border-radius:6px;" if copies > 0 else "background:#95a5a6;color:white;padding:8px;border-radius:6px;")
+                btn.clicked.connect(lambda _, bid=book_id: self.borrow_book(bid))
+                hbox.addWidget(btn)
+            
+            self.books_table.setCellWidget(i, 4, widget)
+
+        self.books_table.resizeColumnsToContents()
+
+    def borrow_book(self, book_id):
+        success, msg = Book.borrow(book_id, self.user["id"])
+        if success:
+            QMessageBox.information(self, "Success", msg)
+            self.search_books()  # Refresh the table
+        else:
+            QMessageBox.warning(self, "Error", msg)
 
     def borrow_tab(self):
-        # ← Your working borrow/return code here
-        pass  # Replace with your actual code
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        layout.addWidget(QLabel("<h2>My Borrowed Books</h2>"))
+
+        # Active loans table
+        self.loans_table = QTableWidget()
+        self.loans_table.setColumnCount(5)
+        self.loans_table.setHorizontalHeaderLabels(["Book Title", "Due Date", "Days Left", "Status", "Action"])
+        self.loans_table.horizontalHeader().setStretchLastSection(True)
+        
+        layout.addWidget(self.loans_table)
+        widget.setLayout(layout)
+        
+        self.load_user_loans()
+        return widget
+
+    def load_user_loans(self):
+        # Get member_id from user_id
+        member_row = db.fetchone("SELECT member_id FROM member WHERE user_id=%s", (self.user["id"],))
+        if not member_row:
+            return
+        
+        member_id = member_row[0]
+        
+        # Get active loans
+        loans = db.fetch("""
+            SELECT l.loan_id, b.title, l.due_date, l.return_date
+            FROM loan l
+            JOIN book b ON l.book_id = b.book_id
+            WHERE l.member_id = %s AND l.return_date IS NULL
+            ORDER BY l.due_date
+        """, (member_id,))
+
+        self.loans_table.setRowCount(len(loans))
+        for i, (loan_id, title, due_date, _) in enumerate(loans):
+            from datetime import date, timedelta
+            from PyQt5.QtGui import QColor
+            days_left = (due_date - date.today()).days
+            status = "Due Soon" if days_left <= 3 else "On Time" if days_left > 0 else "Overdue"
+            status_color = QColor("#e74c3c") if days_left <= 0 else QColor("#f39c12") if days_left <= 3 else QColor("#27ae60")
+
+            self.loans_table.setItem(i, 0, QTableWidgetItem(title))
+            self.loans_table.setItem(i, 1, QTableWidgetItem(str(due_date)))
+            
+            days_widget = QTableWidgetItem(str(days_left))
+            days_widget.setForeground(Qt.red if days_left < 0 else Qt.black)
+            self.loans_table.setItem(i, 2, days_widget)
+            
+            status_widget = QTableWidgetItem(status)
+            status_widget.setForeground(status_color)
+            self.loans_table.setItem(i, 3, status_widget)
+
+            # Return button
+            widget = QWidget()
+            hbox = QHBoxLayout(widget)
+            hbox.setContentsMargins(5, 5, 5, 5)
+            
+            return_btn = QPushButton("Return")
+            return_btn.setStyleSheet("background:#e67e22;color:white;padding:8px;border-radius:6px;")
+            return_btn.clicked.connect(lambda _, lid=loan_id: self.return_book(lid))
+            hbox.addWidget(return_btn)
+
+            self.loans_table.setCellWidget(i, 4, widget)
+
+        self.loans_table.resizeColumnsToContents()
+
+    def return_book(self, loan_id):
+        success, msg = Book.return_book(loan_id)
+        if success:
+            QMessageBox.information(self, "Success", msg)
+            self.load_user_loans()  # Refresh the table
+        else:
+            QMessageBox.warning(self, "Error", msg)
 
     def dashboard_tab(self):
         widget = QWidget()
@@ -241,12 +386,21 @@ class MainWindow(QMainWindow):
             box.setLayout(hbox)
             layout.addWidget(box)
 
+        # Members info box
+        if self.user["role_id"] == 2:
+            info_box = QGroupBox("My Clubs")
+            info_layout = QVBoxLayout()
+            self.my_clubs_label = QLabel("Loading...")
+            info_layout.addWidget(self.my_clubs_label)
+            info_box.setLayout(info_layout)
+            layout.addWidget(info_box)
+
         self.clubs_table = QTableWidget()
         self.clubs_table.setColumnCount(4)
         self.clubs_table.setHorizontalHeaderLabels(["Club Name", "Description", "Members", "Action"])
         self.clubs_table.horizontalHeader().setStretchLastSection(True)
 
-        layout.addWidget(QLabel("<h2>Book Clubs</h2>"))
+        layout.addWidget(QLabel("<h2>Available Book Clubs</h2>"))
         layout.addWidget(self.clubs_table)
         widget.setLayout(layout)
 
@@ -257,32 +411,57 @@ class MainWindow(QMainWindow):
         clubs = BookClub.get_all()
         self.clubs_table.setRowCount(len(clubs))
 
+        member_id = None
+        my_clubs = []
+        
+        if self.user["role_id"] == 2:  # Member
+            member_row = db.fetchone("SELECT member_id FROM member WHERE user_id=%s", (self.user["id"],))
+            member_id = member_row[0] if member_row else None
+            if member_id:
+                my_clubs_data = db.fetch("SELECT club_id FROM club_member WHERE member_id=%s", (member_id,))
+                my_clubs = [c[0] for c in my_clubs_data]
+            
+            # Update "My Clubs" label
+            if my_clubs:
+                my_clubs_names = db.fetch(
+                    f"SELECT name FROM bookclub WHERE club_id IN ({','.join(['%s']*len(my_clubs))})", 
+                    tuple(my_clubs)
+                )
+                club_names = ", ".join([c[0] for c in my_clubs_names])
+                self.my_clubs_label.setText(f"<b>You are member of:</b> {club_names}")
+            else:
+                self.my_clubs_label.setText("<b>You haven't joined any clubs yet.</b> Click 'Join' to get started!")
+
         for i, (club_id, name, desc, count) in enumerate(clubs):
             self.clubs_table.setItem(i, 0, QTableWidgetItem(name))
             self.clubs_table.setItem(i, 1, QTableWidgetItem(desc or "—"))
-            self.clubs_table.setItem(i, 2, QTableWidgetItem(str(count)))
+            self.clubs_table.setItem(i, 2, QTableWidgetItem(f"{count} member{'s' if count != 1 else ''}"))
 
             widget = QWidget()
             hbox = QHBoxLayout(widget)
             hbox.setContentsMargins(5, 5, 5, 5)
 
             if self.user["role_id"] == 2:  # Member
-                member_row = db.fetchone("SELECT member_id FROM member WHERE user_id=%s", (self.user["id"],))
-                member_id = member_row[0] if member_row else None
-                joined = member_id and db.fetchone("SELECT 1 FROM club_member WHERE club_id=%s AND member_id=%s", (club_id, member_id))
+                joined = member_id and club_id in my_clubs
 
                 btn = QPushButton("Leave" if joined else "Join")
-                btn.setStyleSheet(f"background:#{'e74c3c' if joined else '27ae60'};color:white;padding:8px;border-radius:6px;")
-                def handler(cid=club_id):
-                    if joined:
-                        BookClub.leave(cid, self.user["id"])
+                btn.setStyleSheet(f"background:#{'e74c3c' if joined else '27ae60'};color:white;padding:8px;border-radius:6px;font-weight:bold;")
+                def handler(cid=club_id, is_joined=joined):
+                    if is_joined:
+                        success, msg = BookClub.leave(cid, self.user["id"])
+                        QMessageBox.information(self, "Success", "You left the club!")
                     else:
-                        BookClub.join(cid, self.user["id"])
+                        success, msg = BookClub.join(cid, self.user["id"])
+                        if success:
+                            QMessageBox.information(self, "Welcome!", "You joined the club!")
+                        else:
+                            QMessageBox.warning(self, "Error", msg)
                     self.refresh_clubs()
                 btn.clicked.connect(handler)
                 hbox.addWidget(btn)
 
             view_btn = QPushButton("View Members")
+            view_btn.setStyleSheet("background:#3498db;color:white;padding:8px;border-radius:6px;font-weight:bold;")
             view_btn.clicked.connect(lambda _, cid=club_id, n=name: self.show_club_members(cid, n))
             hbox.addWidget(view_btn)
 

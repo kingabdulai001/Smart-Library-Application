@@ -1,5 +1,6 @@
 from db import Database
 from datetime import date, timedelta
+import psycopg2
 
 db = Database()  # Singleton instance
 
