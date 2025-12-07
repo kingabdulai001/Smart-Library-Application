@@ -3,7 +3,7 @@ import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont
-from models import User, Book, BookClub, Loan, Member
+from models import User, Book, BookClub, Loan, Member, Dashboard
 from db import Database  # Make sure your file is named db.py
 
 db = Database()
@@ -185,7 +185,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.book_catalog_tab(), "Book Catalog")
         # tabs.addTab(self.borrow_tab(), "Borrow/Return")
         tabs.addTab(self.book_clubs_tab(), "Book Clubs")
-        tabs.addTab(self.dashboard_tab(), "Dashboard")
+        # tabs.addTab(self.dashboard_tab(), "Dashboard")
 
         # Admins see borrowed books tab
         if self.user["role_id"] == 1:
@@ -349,12 +349,26 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", msg)
 
     def dashboard_tab(self):
+        """
+        Admin dashboard to display data summary across all sections.
+        """
         widget = QWidget()
         layout = QVBoxLayout()
-        label = QLabel("Welcome to SmartLibrary Dashboard!\nMore features coming soon...")
-        label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("font-size: 20px;")
-        layout.addWidget(label)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Title
+        layout.addWidget(QLabel("<h2>Admin Dashboard</h2>"))
+
+        # Fetch summary data
+        summary = Dashboard.get_summary()
+
+        # Display summary
+        layout.addWidget(QLabel(f"<b>Total Books:</b> {summary['total_books']}"))
+        layout.addWidget(QLabel(f"<b>Total Borrowed Books:</b> {summary['total_borrowed_books']}"))
+        layout.addWidget(QLabel(f"<b>Total Members:</b> {summary['total_members']}"))
+        layout.addWidget(QLabel(f"<b>Total Clubs:</b> {summary['total_clubs']}"))
+
         widget.setLayout(layout)
         return widget
 

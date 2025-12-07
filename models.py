@@ -210,3 +210,32 @@ class Member:
             return True, "Member unbanned successfully."
         except Exception as e:
             return False, f"Failed to unban member: {str(e)}"
+
+class Dashboard:
+    @staticmethod
+    def get_summary():
+        """
+        Fetch summary data for the admin dashboard.
+        Returns a dictionary with the following keys:
+        - total_books
+        - total_borrowed_books
+        - total_members
+        - total_clubs
+        """
+        summary = {}
+
+        # Total books
+        summary['total_books'] = db.fetchone("SELECT COUNT(*) FROM book")[0]
+
+        # Total borrowed books
+        summary['total_borrowed_books'] = db.fetchone(
+            "SELECT COUNT(*) FROM loan WHERE return_date IS NULL"
+        )[0]
+
+        # Total members
+        summary['total_members'] = db.fetchone("SELECT COUNT(*) FROM member")[0]
+
+        # Total clubs
+        summary['total_clubs'] = db.fetchone("SELECT COUNT(*) FROM bookclub")[0]
+
+        return summary
