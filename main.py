@@ -3,7 +3,7 @@ import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont
-from models import User, Book, BookClub
+from models import User, Book, BookClub, Loan
 from db import Database  # Make sure your file is named db.py
 
 db = Database()
@@ -183,9 +183,13 @@ class MainWindow(QMainWindow):
         tabs.setStyleSheet("QTabBar::tab { height: 40px; width: 160px; font-size: 14px; }")
 
         tabs.addTab(self.book_catalog_tab(), "Book Catalog")
-        tabs.addTab(self.borrow_tab(), "Borrow/Return")
+        # tabs.addTab(self.borrow_tab(), "Borrow/Return")
         tabs.addTab(self.book_clubs_tab(), "Book Clubs")
         tabs.addTab(self.dashboard_tab(), "Dashboard")
+
+        # Admins see borrowed books tab
+        if self.user["role_id"] == 1:
+            tabs.addTab(self.borrowed_books_tab(), "All Borrowed Books")
 
         self.setCentralWidget(tabs)
 
@@ -265,25 +269,25 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "Error", msg)
 
-    def borrow_tab(self):
-        widget = QWidget()
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+    # def borrow_tab(self):
+    #     widget = QWidget()
+    #     layout = QVBoxLayout()
+    #     layout.setSpacing(15)
+    #     layout.setContentsMargins(20, 20, 20, 20)
 
-        layout.addWidget(QLabel("<h2>My Borrowed Books</h2>"))
+    #     layout.addWidget(QLabel("<h2>My Borrowed Books</h2>"))
 
-        # Active loans table
-        self.loans_table = QTableWidget()
-        self.loans_table.setColumnCount(5)
-        self.loans_table.setHorizontalHeaderLabels(["Book Title", "Due Date", "Days Left", "Status", "Action"])
-        self.loans_table.horizontalHeader().setStretchLastSection(True)
+    #     # Active loans table
+    #     self.loans_table = QTableWidget()
+    #     self.loans_table.setColumnCount(5)
+    #     self.loans_table.setHorizontalHeaderLabels(["Book Title", "Due Date", "Days Left", "Status", "Action"])
+    #     self.loans_table.horizontalHeader().setStretchLastSection(True)
         
-        layout.addWidget(self.loans_table)
-        widget.setLayout(layout)
+    #     layout.addWidget(self.loans_table)
+    #     widget.setLayout(layout)
         
-        self.load_user_loans()
-        return widget
+    #     self.load_user_loans()
+    #     return widget
 
     def load_user_loans(self):
         # Get member_id from user_id
@@ -446,18 +450,22 @@ class MainWindow(QMainWindow):
 
                 btn = QPushButton("Leave" if joined else "Join")
                 btn.setStyleSheet(f"background:#{'e74c3c' if joined else '27ae60'};color:white;padding:8px;border-radius:6px;font-weight:bold;")
-                def handler(cid=club_id, is_joined=joined):
-                    if is_joined:
-                        success, msg = BookClub.leave(cid, self.user["id"])
-                        QMessageBox.information(self, "Success", "You left the club!")
-                    else:
-                        success, msg = BookClub.join(cid, self.user["id"])
-                        if success:
-                            QMessageBox.information(self, "Welcome!", "You joined the club!")
+                
+                def make_handler(cid, is_joined):
+                    def handler():
+                        if is_joined:
+                            success, msg = BookClub.leave(cid, self.user["id"])
+                            QMessageBox.information(self, "Success", "You left the club!")
                         else:
-                            QMessageBox.warning(self, "Error", msg)
-                    self.refresh_clubs()
-                btn.clicked.connect(handler)
+                            success, msg = BookClub.join(cid, self.user["id"])
+                            if success:
+                                QMessageBox.information(self, "Welcome!", "You joined the club!")
+                            else:
+                                QMessageBox.warning(self, "Error", msg)
+                        self.refresh_clubs()
+                    return handler
+                
+                btn.clicked.connect(make_handler(club_id, joined))
                 hbox.addWidget(btn)
 
             view_btn = QPushButton("View Members")
@@ -487,6 +495,48 @@ class MainWindow(QMainWindow):
         layout.addWidget(table)
         dialog.setLayout(layout)
         dialog.exec_()
+
+    # ———————————————— BORROWED BOOKS TAB (ADMIN) ————————————————
+    def borrowed_books_tab(self):
+        """
+        Admin tab to view all borrowed books and their return timelines.
+        """
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Title
+        layout.addWidget(QLabel("<h2>Borrowed Books</h2>"))
+
+        # Borrowed books table
+        self.borrowed_books_table = QTableWidget()
+        self.borrowed_books_table.setColumnCount(5)
+        self.borrowed_books_table.setHorizontalHeaderLabels([
+            "Loan ID", "Book Title", "Member Name", "Due Date", "Return Date"
+        ])
+        self.borrowed_books_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.borrowed_books_table)
+
+        widget.setLayout(layout)
+        self.load_borrowed_books()
+        return widget
+
+    def load_borrowed_books(self):
+        """
+        Load all borrowed books into the table.
+        """
+        borrowed_books = Loan.get_borrowed_books()
+        self.borrowed_books_table.setRowCount(len(borrowed_books))
+
+        for i, (loan_id, book_title, member_name, due_date, return_date) in enumerate(borrowed_books):
+            self.borrowed_books_table.setItem(i, 0, QTableWidgetItem(str(loan_id)))
+            self.borrowed_books_table.setItem(i, 1, QTableWidgetItem(book_title))
+            self.borrowed_books_table.setItem(i, 2, QTableWidgetItem(member_name))
+            self.borrowed_books_table.setItem(i, 3, QTableWidgetItem(str(due_date)))
+            self.borrowed_books_table.setItem(i, 4, QTableWidgetItem(str(return_date) if return_date else "Not Returned"))
+
+        self.borrowed_books_table.resizeColumnsToContents()
 
 
 if __name__ == "__main__":

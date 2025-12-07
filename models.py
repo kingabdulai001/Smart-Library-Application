@@ -170,3 +170,20 @@ class BookClub:
             JOIN member m ON cm.member_id = m.member_id
             WHERE cm.club_id = %s
         """, (club_id,))
+
+class Loan:
+    @staticmethod
+    def get_borrowed_books():
+        """
+        Fetch all borrowed books with their return timelines.
+        Returns a list of tuples with the following structure:
+        (loan_id, book_title, member_name, due_date, return_date)
+        """
+        query = """
+            SELECT l.loan_id, b.title, m.name, l.due_date, l.return_date
+            FROM loan l
+            JOIN book b ON l.book_id = b.book_id
+            JOIN member m ON l.member_id = m.member_id
+            ORDER BY l.due_date
+        """
+        return db.fetch(query)
