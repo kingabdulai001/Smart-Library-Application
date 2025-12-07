@@ -187,3 +187,26 @@ class Loan:
             ORDER BY l.due_date
         """
         return db.fetch(query)
+
+class Member:
+    @staticmethod
+    def ban_member(member_id):
+        """
+        Ban a member by setting their banned status to True.
+        """
+        try:
+            db.execute("UPDATE member SET banned = TRUE WHERE member_id = %s", (member_id,))
+            return True, "Member banned successfully."
+        except Exception as e:
+            return False, f"Failed to ban member: {str(e)}"
+
+    @staticmethod
+    def unban_member(member_id):
+        """
+        Unban a member by setting their banned status to False.
+        """
+        try:
+            db.execute("UPDATE member SET banned = FALSE WHERE member_id = %s", (member_id,))
+            return True, "Member unbanned successfully."
+        except Exception as e:
+            return False, f"Failed to unban member: {str(e)}"

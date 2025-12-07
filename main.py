@@ -3,7 +3,7 @@ import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QFont
-from models import User, Book, BookClub, Loan
+from models import User, Book, BookClub, Loan, Member
 from db import Database  # Make sure your file is named db.py
 
 db = Database()
@@ -190,6 +190,7 @@ class MainWindow(QMainWindow):
         # Admins see borrowed books tab
         if self.user["role_id"] == 1:
             tabs.addTab(self.borrowed_books_tab(), "All Borrowed Books")
+            tabs.addTab(self.manage_members_tab(), "Manage Members")
 
         self.setCentralWidget(tabs)
 
@@ -537,6 +538,74 @@ class MainWindow(QMainWindow):
             self.borrowed_books_table.setItem(i, 4, QTableWidgetItem(str(return_date) if return_date else "Not Returned"))
 
         self.borrowed_books_table.resizeColumnsToContents()
+
+    # ———————————————— MANAGE MEMBERS TAB (ADMIN) ————————————————
+    def manage_members_tab(self):
+        """
+        Admin tab to manage members, including banning/unbanning.
+        """
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Title
+        layout.addWidget(QLabel("<h2>Manage Members</h2>"))
+
+        # Members table
+        self.members_table = QTableWidget()
+        self.members_table.setColumnCount(4)
+        self.members_table.setHorizontalHeaderLabels([
+            "Member ID", "Name", "Email", "Action"
+        ])
+        self.members_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.members_table)
+
+        widget.setLayout(layout)
+        self.load_members()
+        return widget
+
+    def load_members(self):
+        """
+        Load all members into the table.
+        """
+        members = db.fetch("SELECT member_id, name, email, banned FROM member ORDER BY name")
+        self.members_table.setRowCount(len(members))
+
+        for i, (member_id, name, email, banned) in enumerate(members):
+            self.members_table.setItem(i, 0, QTableWidgetItem(str(member_id)))
+            self.members_table.setItem(i, 1, QTableWidgetItem(name))
+            self.members_table.setItem(i, 2, QTableWidgetItem(email))
+
+            # Action button (Ban/Unban)
+            widget = QWidget()
+            hbox = QHBoxLayout(widget)
+            hbox.setContentsMargins(5, 5, 5, 5)
+
+            btn = QPushButton("Unban" if banned else "Ban")
+            btn.setStyleSheet(f"background:#{'e74c3c' if not banned else '27ae60'};color:white;padding:8px;border-radius:6px;font-weight:bold;")
+            btn.clicked.connect(lambda _, mid=member_id, is_banned=banned: self.toggle_ban(mid, is_banned))
+            hbox.addWidget(btn)
+
+            self.members_table.setCellWidget(i, 3, widget)
+
+        self.members_table.resizeColumnsToContents()
+
+    def toggle_ban(self, member_id, is_banned):
+        """
+        Toggle the ban status of a member.
+        """
+        if is_banned:
+            success, msg = Member.unban_member(member_id)
+        else:
+            success, msg = Member.ban_member(member_id)
+
+        if success:
+            QMessageBox.information(self, "Success", msg)
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+        self.load_members()  # Refresh the table
 
 
 if __name__ == "__main__":
